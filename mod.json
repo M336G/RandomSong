@@ -6,7 +6,7 @@
 	},
 	"id": "m336.random-song",
 	"name": "Random Song",
-	"version": "v1.0.0",
+	"version": "v1.0.1",
 	"developer": "M336",
 	"description": "Easily get random songs from the editor!",
 	"tags": [

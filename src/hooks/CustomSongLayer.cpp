@@ -168,8 +168,8 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
             auto filename = path.filename();
             auto extension = filename.extension();
         
-            if (filename.string()[0] != 's' && (extension == ".mp3" || extension == ".ogg"))
-                ids.push_back(filename.stem().string());
+            if (utils::string::pathToString(filename)[0] != 's' && (extension == ".mp3" || extension == ".ogg"))
+                ids.push_back(utils::string::pathToString(filename.stem()));
         });
 
         if (ids.empty()) {
