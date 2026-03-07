@@ -53,7 +53,12 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
             m_fields->m_isBeingFetched = true;
             async::spawn(
                 []() -> arc::Future<Result<void, std::string>> {
-                    auto musicLibraryPath = ModManager::SaveDirectory / "musiclibrary.dat";
+                    // It's funnier on apple
+                    #ifdef GEODE_IS_MACOS
+                        auto musicLibraryPath = std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches" / "musiclibrary.dat";
+                    #else
+                        auto musicLibraryPath = ModManager::SaveDirectory / "musiclibrary.dat";
+                    #endif
 
                     // If musiclibrary.dat doesn't exist, try to call the music browser's
                     // function to fetch it (compatibility with GDPSs or just changes with
@@ -159,7 +164,12 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
         // This is kind of harder to track so just do this every time the button is clicked
         // (shouldn't really consume that much anyways)
 
-        auto files = utils::file::readDirectory(ModManager::SaveDirectory);
+        #ifdef GEODE_IS_MACOS
+            auto files = utils::file::readDirectory(std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches");
+        #else
+            auto files = utils::file::readDirectory(ModManager::SaveDirectory);
+        #endif
+
         if (!files)
             return;
 
