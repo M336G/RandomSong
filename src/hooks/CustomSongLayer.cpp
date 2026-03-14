@@ -32,6 +32,9 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
         );
         randomStoredSongButton->setID("random-stored-song-button"_spr);
         randomStoredSongButton->setPosition({ 25, -185 });
+        #ifdef GEODE_ON_IOS
+            randomStoredSongButton->setOpacity(0.5f * 255);
+        #endif
 
         menu->addChild(randomLibrarySongButton);
         menu->addChild(randomStoredSongButton);
@@ -53,83 +56,112 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
             m_fields->m_isBeingFetched = true;
             async::spawn(
                 []() -> arc::Future<Result<void, std::string>> {
-                    // It's funnier on apple
-                    #ifdef GEODE_IS_MACOS
-                        auto musicLibraryPath = std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches" / "musiclibrary.dat";
-                    #else
-                        auto musicLibraryPath = ModManager::SaveDirectory / "musiclibrary.dat";
-                    #endif
+                    if (ModManager::UseLocalLibrary) {
+                        // It's funnier on apple
+                        #ifdef GEODE_IS_MACOS
+                            auto musicLibraryPath = std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches" / "musiclibrary.dat";
+                        #else
+                            auto musicLibraryPath = ModManager::SaveDirectory / "musiclibrary.dat";
+                        #endif
 
-                    // If musiclibrary.dat doesn't exist, try to call the music browser's
-                    // function to fetch it (compatibility with GDPSs or just changes with
-                    // the game in general). If it still doesn't exist after 5 seconds then
-                    // just throw a timeout error
-                    if (!std::filesystem::exists(musicLibraryPath)) {
-                        co_await waitForMainThread<void>([]() {
-                            auto* musicBrowser = MusicBrowser::create(0, GJSongType::Music);
-                            musicBrowser->trySetupMusicBrowser();
-                            musicBrowser->onClose(nullptr);
+                        // If musiclibrary.dat doesn't exist, try to call the music browser's
+                        // function to fetch it (compatibility with GDPSs or just changes with
+                        // the game in general). If it still doesn't exist after 5 seconds then
+                        // just throw a timeout error
+                        if (!std::filesystem::exists(musicLibraryPath)) {
+                            co_await waitForMainThread<void>([]() {
+                                auto* musicBrowser = MusicBrowser::create(0, GJSongType::Music);
+                                musicBrowser->trySetupMusicBrowser();
+                                musicBrowser->onClose(nullptr);
+                            });
+
+                            int attempts = 0;
+                            while (!std::filesystem::exists(musicLibraryPath)) {
+                                if (attempts++ > 5)
+                                    co_return Err("Failed downloading musiclibrary.dat: timed out");
+                                co_await arc::sleep(asp::Duration::fromSecs(1));
+                            }
+                        }
+
+                        auto read = utils::file::readString(musicLibraryPath);
+                        if (!read)
+                            co_return Err("Failed reading musiclibrary.dat: {}", read.unwrapErr());
+
+                        auto& data = read.unwrap();
+                        if (data.empty())
+                            co_return Err("Failed reading musiclibrary.dat: empty file");
+
+                        std::vector<std::string> ids;
+
+                        // After getting the data, try decoding it from base64url and then try
+                        // to ZLib inflate it to get the actual unencoded/uncompressed data
+                        auto decoded = ZipUtils::base64URLDecode(data);
+                        if (decoded.empty())
+                            co_return Err("Failed decoding musiclibrary.dat");
+
+                        unsigned char* out = nullptr;
+                        auto outSize = ZipUtils::ccInflateMemory(
+                            reinterpret_cast<unsigned char*>(decoded.data()),
+                            decoded.size(),
+                            &out
+                        );
+
+                        if (!out || outSize <= 0)
+                            co_return Err("Failed decompressing musiclibrary.dat");
+                        
+                        std::string decompressed(reinterpret_cast<char*>(out), outSize);
+                        free(out);
+
+                        // Then parse every single ID into its own array in the ModManager so we
+                        // we don't need to redo this behavior in this session
+                        int counter = 1;
+                        // https://boomlings.dev/resources/client/musiclibrary
+                        asp::iter::split(decompressed, '|').forEach([&ids, &counter](std::string_view const part) {
+                            if (counter++ == 3) { // "{version}|{artists}|{songs}|{tags}", we want songs
+                                // {song};{song};{song};...
+                                asp::iter::split(part, ';').forEach([&ids](std::string_view const song) {
+                                    // {id},{name},{artistID},{filesize},{duration},{tags},{musicPlatform},{extraArtists},{externalLink},{newButton},{priorityOrder},{songNumber}
+                                    auto id = asp::iter::split(song, ',').next();
+
+                                    if (id)
+                                        ids.push_back(std::string(*id));
+                                });
+                            }
                         });
 
-                        int attempts = 0;
-                        while (!std::filesystem::exists(musicLibraryPath)) {
-                            if (attempts++ > 5)
-                                co_return Err("Failed downloading musiclibrary.dat: timed out");
-                            co_await arc::sleep(asp::Duration::fromSecs(1));
+                        if (ids.empty())
+                            co_return Err("Failed parsing musiclibrary.dat: no IDs");
+
+                        ModManager::LibraryMusics = std::move(ids);
+                        co_return Ok();
+                    } else {
+                        auto req = co_await utils::web::WebRequest()
+                            .userAgent(fmt::format("RandomSong/{}", Mod::get()->getVersion().toNonVString()))
+                            .get("https://gd-libraries-api.m336.workers.dev/api/music");
+                        
+                        auto body = req.json().unwrapOrDefault();
+                        if (!req.ok()) {
+                            auto errorMessage = req.errorMessage();
+                            co_return Err("Failed downloading the music library ({}): {}", req.code(), errorMessage.empty() ? req.string().unwrapOrDefault() : errorMessage);
                         }
+                        auto bodySize = body.size();
+                        auto dataSize = body["data"].size();
+                        if (!bodySize || !dataSize)
+                            co_return Err("Failed downloading the music library: empty body ({} objects)/data object ({} objects)", bodySize, dataSize);
+
+                        std::vector<std::string> ids;
+                        for (auto& song : body["data"]) {
+                            auto id = song["id"].asInt();
+                            if (id)
+                                ids.push_back(std::to_string(*id));
+                        }
+
+                        if (ids.empty())
+                            co_return Err("Failed parsing the music library: no IDs");
+                        
+                        ModManager::LibraryMusics = std::move(ids);
+                        co_return Ok();
                     }
-
-                    auto read = utils::file::readString(musicLibraryPath);
-                    if (!read)
-                        co_return Err("Failed reading musiclibrary.dat: {}", read.unwrapErr());
-
-                    auto& data = read.unwrap();
-                    if (data.empty())
-                        co_return Err("Failed reading musiclibrary.dat: empty file");
-
-                    std::vector<std::string> ids;
-
-                    // After getting the data, try decoding it from base64url and then try
-                    // to ZLib inflate it to get the actual unencoded/uncompressed data
-                    auto decoded = ZipUtils::base64URLDecode(data);
-                    if (decoded.empty())
-                        co_return Err("Failed decoding musiclibrary.dat");
-
-                    unsigned char* out = nullptr;
-                    auto outSize = ZipUtils::ccInflateMemory(
-                        reinterpret_cast<unsigned char*>(decoded.data()),
-                        decoded.size(),
-                        &out
-                    );
-
-                    if (!out || outSize <= 0)
-                        co_return Err("Failed decompressing musiclibrary.dat");
-                    
-                    std::string decompressed(reinterpret_cast<char*>(out), outSize);
-                    free(out);
-
-                    // Then parse every single ID into its own array in the ModManager so we
-                    // we don't need to redo this behavior in this session
-                    int counter = 1;
-                    // https://boomlings.dev/resources/client/musiclibrary
-                    asp::iter::split(decompressed, '|').forEach([&ids, &counter](std::string_view const part) {
-                        if (counter++ == 3) { // "{version}|{artists}|{songs}|{tags}", we want songs
-                            // {song};{song};{song};...
-                            asp::iter::split(part, ';').forEach([&ids](std::string_view const song) {
-                                // {id},{name},{artistID},{filesize},{duration},{tags},{musicPlatform},{extraArtists},{externalLink},{newButton},{priorityOrder},{songNumber}
-                                auto id = asp::iter::split(song, ',').next();
-
-                                if (id)
-                                    ids.push_back(std::string(*id));
-                            });
-                        }
-                    });
-
-                    if (ids.empty())
-                        co_return Err("Failed parsing musiclibrary.dat: no IDs");
-
-                    ModManager::LibraryMusics = std::move(ids);
-                    co_return Ok();
                 },
                 [self = Ref<MyCustomSongLayer>(this)](Result<void, std::string> result) {
                     if (!result.isOk()) {
@@ -161,6 +193,15 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
     };
 
     void onRandomStoredSongButton(CCObject*) {
+        #ifdef GEODE_IS_IOS
+            Notification::create(
+                "Not implemented on iOS yet!",
+                NotificationIcon::Warning,
+                0.5f
+            )->show();
+            return;
+        #endif
+
         // This is kind of harder to track so just do this every time the button is clicked
         // (shouldn't really consume that much anyways)
 
