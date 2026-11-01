@@ -1,5 +1,5 @@
 #include <Geode/modify/MusicBrowser.hpp>
-#include "../ModManager.h"
+#include "../ModManager.hpp"
 
 class $modify(MusicBrowser) {
     // Currently don't really know how I could clear this when there's an actual

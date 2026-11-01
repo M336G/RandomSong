@@ -1,9 +1,9 @@
-#include "ModManager.h"
+#include "ModManager.hpp"
 
 using namespace geode::prelude;
 
 std::vector<std::string> ModManager::LibraryMusics = {};
-std::filesystem::path ModManager::SaveDirectory = dirs::getSaveDir();
+asp::fs::Path ModManager::SaveDirectory = dirs::getSaveDir();
 
 bool ModManager::AutoSearch = Mod::get()->getSettingValue<bool>("auto-search");
 #ifndef GEODE_IS_IOS

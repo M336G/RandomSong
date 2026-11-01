@@ -1,7 +1,7 @@
 #include <Geode/modify/CustomSongLayer.hpp>
 #include <arc/time/Sleep.hpp>
 #include <asp/iter.hpp>
-#include "../ModManager.h"
+#include "../ModManager.hpp"
 
 using namespace geode::prelude;
 
@@ -59,7 +59,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
                     if (ModManager::UseLocalLibrary) {
                         // It's funnier on apple
                         #ifdef GEODE_IS_MACOS
-                            auto musicLibraryPath = std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches" / "musiclibrary.dat";
+                            auto musicLibraryPath = asp::fs::Path(getEnvironmentVariable("HOME")) / "Library" / "Caches" / "musiclibrary.dat";
                         #else
                             auto musicLibraryPath = ModManager::SaveDirectory / "musiclibrary.dat";
                         #endif
@@ -68,7 +68,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
                         // function to fetch it (compatibility with GDPSs or just changes with
                         // the game in general). If it still doesn't exist after 5 seconds then
                         // just throw a timeout error
-                        if (!std::filesystem::exists(musicLibraryPath)) {
+                        if (!musicLibraryPath.exists()) {
                             co_await waitForMainThread<void>([]() {
                                 auto* musicBrowser = MusicBrowser::create(0, GJSongType::Music);
                                 musicBrowser->trySetupMusicBrowser();
@@ -76,7 +76,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
                             });
 
                             int attempts = 0;
-                            while (!std::filesystem::exists(musicLibraryPath)) {
+                            while (!musicLibraryPath.exists()) {
                                 if (attempts++ > 5)
                                     co_return Err("Failed downloading musiclibrary.dat: timed out");
                                 co_await arc::sleep(asp::Duration::fromSecs(1));
@@ -206,7 +206,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
         // (shouldn't really consume that much anyways)
 
         #ifdef GEODE_IS_MACOS
-            auto files = utils::file::readDirectory(std::filesystem::path(getEnvironmentVariable("HOME")) / "Library" / "Caches");
+            auto files = utils::file::readDirectory(asp::fs::Path(getEnvironmentVariable("HOME")) / "Library" / "Caches");
         #else
             auto files = utils::file::readDirectory(ModManager::SaveDirectory);
         #endif
@@ -215,12 +215,12 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
             return;
 
         std::vector<std::string> ids;
-        asp::iter::from(files.unwrap()).forEach([&ids](std::filesystem::path const& path) {
+        asp::iter::from(files.unwrap()).forEach([&ids](asp::fs::Path const& path) {
             auto filename = path.filename();
-            auto extension = filename.extension();
+            auto extension = filename->extension();
         
-            if (utils::string::pathToString(filename)[0] != 's' && (extension == ".mp3" || extension == ".ogg"))
-                ids.push_back(utils::string::pathToString(filename.stem()));
+            if (filename->string()[0] != 's' && (extension == "mp3" || extension == "ogg"))
+                ids.push_back(std::string(*asp::fs::_impl::stem(filename->view()))); // hmm
         });
 
         if (ids.empty()) {
