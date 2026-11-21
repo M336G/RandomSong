@@ -10,14 +10,14 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
         bool m_isBeingFetched = false;
     };
 
-    bool init(CustomSongDelegate* delegate) {
+    bool init(CustomSongDelegate *delegate) {
         if (!CustomSongLayer::init(delegate))
             return false;
 
-        auto* menu = m_mainLayer->getChildByType<CCMenu>(0);
+        auto *menu = m_mainLayer->getChildByType<CCMenu>(0);
         if (!menu) return true;
 
-        auto* randomLibrarySongButton = CCMenuItemSpriteExtra::create(
+        auto *randomLibrarySongButton = CCMenuItemSpriteExtra::create(
             CircleButtonSprite::createWithSpriteFrameName("RS_randomSprite_001.png"_spr),
             this,
             menu_selector(MyCustomSongLayer::onRandomLibrarySongButton)
@@ -25,7 +25,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
         randomLibrarySongButton->setID("random-library-song-button"_spr);
         randomLibrarySongButton->setPosition({ 25, -125 });
 
-        auto* randomStoredSongButton = CCMenuItemSpriteExtra::create(
+        auto *randomStoredSongButton = CCMenuItemSpriteExtra::create(
             CircleButtonSprite::createWithSpriteFrameName("RS_randomSprite_002.png"_spr),
             this,
             menu_selector(MyCustomSongLayer::onRandomStoredSongButton)
@@ -70,7 +70,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
                         // just throw a timeout error
                         if (!musicLibraryPath.exists()) {
                             co_await waitForMainThread<void>([]() {
-                                auto* musicBrowser = MusicBrowser::create(0, GJSongType::Music);
+                                auto *musicBrowser = MusicBrowser::create(0, GJSongType::Music);
                                 musicBrowser->trySetupMusicBrowser();
                                 musicBrowser->onClose(nullptr);
                             });
@@ -99,7 +99,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
                         if (decoded.empty())
                             co_return Err("Failed decoding musiclibrary.dat");
 
-                        unsigned char* out = nullptr;
+                        unsigned char *out = nullptr;
                         auto outSize = ZipUtils::ccInflateMemory(
                             reinterpret_cast<unsigned char*>(decoded.data()),
                             decoded.size(),
@@ -220,7 +220,7 @@ class $modify(MyCustomSongLayer, CustomSongLayer) {
             auto extension = filename->extension();
         
             if (filename->string()[0] != 's' && (extension == "mp3" || extension == "ogg"))
-                ids.push_back(std::string(*asp::fs::_impl::stem(filename->view()))); // hmm
+                ids.push_back(std::string(*path.stem()));
         });
 
         if (ids.empty()) {
