@@ -1,5 +1,5 @@
 # v1.1.1
-- Ported the mod to 2.2091
+- Ported the mod to 2.2091 (temporarily without macOS & iOS)
 
 # v1.1.0
 - Added the "Use Local Library" setting; if disabled, song IDs will be fetched from an external API instead of your local musiclibrary.dat file

@@ -2,13 +2,11 @@
 	"geode": "6.0.0-beta.1",
 	"gd": {
 		"win": "2.2091",
-		"android": "2.2091",
-		"mac": "2.2091",
-		"ios": "2.2091"
+		"android": "2.2091"
 	},
 	"id": "m336.random-song",
 	"name": "Random Song",
-	"version": "v1.1.1",
+	"version": "v1.1.1-beta.1",
 	"developer": "M336",
 	"description": "Easily get random songs from the editor!",
 	"tags": [
